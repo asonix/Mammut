@@ -76,7 +76,8 @@ impl Registration {
         let url = format!("{}/api/v1/apps", self.base);
         self.scopes = app_builder.scopes;
 
-        let app: OAuth = self.client.post(&url).form(&app_builder).send()?.json()?;
+        let request = self.client.post(&url).form(&app_builder).build()?;
+        let app: OAuth = self.client.execute(request)?.json()?;
 
         self.client_id = Some(app.client_id);
         self.client_secret = Some(app.client_secret);
@@ -90,7 +91,8 @@ impl Registration {
     pub fn authorise(&mut self) -> Result<String> {
         self.is_registered()?;
 
-        let url = format!(
+        let url =
+            format!(
             "{}/oauth/authorize?client_id={}&redirect_uri={}&scope={}&response_type=code",
             self.base,
             self.client_id.clone().unwrap(),
@@ -116,7 +118,7 @@ impl Registration {
     pub fn create_access_token(self, code: String) -> Result<Mastodon> {
         self.is_registered()?;
         let url = format!(
-            "{}/oauth/token?client_id={}&client_secret={}&code={}&grant_type=authorization_code&redirect_uri={}",
+            "{}/oauth/token?client_id={}&client_secret={}&grant_type=authorization_code&code={}&redirect_uri={}",
             self.base,
             self.client_id.clone().unwrap(),
             self.client_secret.clone().unwrap(),
@@ -124,15 +126,16 @@ impl Registration {
             self.redirect.clone().unwrap()
         );
 
-        let token: AccessToken = self.client.post(&url).send()?.json()?;
+        let request = self.client.post(&url).build()?;
+        let token: AccessToken = self.client.execute(request)?.json()?;
 
-        Ok(Mastodon::from_registration(self.base,
-                                       self.client_id.unwrap(),
-                                       self.client_secret.unwrap(),
-                                       self.redirect.unwrap(),
-                                       token.access_token,
-                                       self.client))
+        Ok(Mastodon::from_registration(
+            self.base,
+            self.client_id.unwrap(),
+            self.client_secret.unwrap(),
+            self.redirect.unwrap(),
+            token.access_token,
+            self.client,
+        ))
     }
 }
-
-

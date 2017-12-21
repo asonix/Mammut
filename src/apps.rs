@@ -20,7 +20,7 @@ pub struct AppBuilder<'a> {
     /// Permission scope of the application.
     pub scopes: Scope,
     /// URL to the homepage of your application.
-    #[serde(skip_serializing_if="Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub website: Option<&'a str>,
 }
 
@@ -54,15 +54,19 @@ pub enum Scope {
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Scope::*;
-        write!(f, "{}", match *self {
-            All => "read write follow",
-            Follow => "follow",
-            Read => "read",
-            ReadFollow => "read follow",
-            ReadWrite => "read write",
-            Write => "write",
-            WriteFollow => "write follow"
-        })
+        write!(
+            f,
+            "{}",
+            match *self {
+                All => "read write follow",
+                Follow => "follow",
+                Read => "read",
+                ReadFollow => "read follow",
+                ReadWrite => "read write",
+                Write => "write",
+                WriteFollow => "write follow",
+            }
+        )
     }
 }
 

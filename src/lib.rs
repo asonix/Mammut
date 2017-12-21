@@ -35,8 +35,10 @@
 #![cfg_attr(test, deny(warnings))]
 #![cfg_attr(test, deny(missing_docs))]
 
-#[macro_use] extern crate serde_derive;
-#[macro_use] extern crate serde_json as json;
+#[macro_use]
+extern crate serde_derive;
+#[macro_use]
+extern crate serde_json as json;
 extern crate chrono;
 extern crate reqwest;
 extern crate serde;
@@ -76,9 +78,11 @@ macro_rules! methods {
             {
                 use std::io::Read;
 
-                let mut response = self.client.$method(&url)
+                let request = self.client.$method(&url)
                     .headers(self.headers.clone())
-                    .send()?;
+                    .build()?;
+
+                let mut response = self.client.execute(request)?;
 
                 let mut vec = Vec::new();
                 response.read_to_end(&mut vec)?;
@@ -111,10 +115,12 @@ macro_rules! route {
                 .file(stringify!($param), $param.as_ref())?
             )*;
 
-            let mut response = self.client.post(&self.route(concat!("/api/v1/", $url)))
+            let request = self.client.post(&self.route(concat!("/api/v1/", $url)))
                 .headers(self.headers.clone())
                 .multipart(form_data)
-                .send()?;
+                .build()?;
+
+            let mut response = self.client.execute(request)?;
 
             let status = response.status().clone();
 
@@ -154,10 +160,12 @@ macro_rules! route {
                 )*
             });
 
-            let mut response = self.client.post(&self.route(concat!("/api/v1/", $url)))
+            let request = self.client.post(&self.route(concat!("/api/v1/", $url)))
                 .headers(self.headers.clone())
                 .json(&form_data)
-                .send()?;
+                .build()?;
+
+            let mut response = self.client.execute(request)?;
 
             let status = response.status().clone();
 
@@ -221,7 +229,7 @@ pub struct Mastodon {
     client: Client,
     headers: Headers,
     /// Raw data about your mastodon instance.
-    pub data: Data
+    pub data: Data,
 }
 
 /// Raw data about mastodon app. Save `Data` using `serde` to prevent needing
@@ -237,7 +245,7 @@ pub struct Data {
     /// Url to redirect back to your application from the instance signup.
     pub redirect: Cow<'static, str>,
     /// The client's access token.
-    pub token: Cow<'static, str>,
+    pub access_token: Cow<'static, str>,
 }
 
 /// enum of possible errors encountered using the mastodon API.
@@ -283,15 +291,12 @@ impl fmt::Display for Error {
 impl StdError for Error {
     fn description(&self) -> &str {
         match *self {
-            Error::Api(ref e) => {
-                e.error_description.as_ref().unwrap_or(&e.error)
-            },
+            Error::Api(ref e) => e.error_description.as_ref().unwrap_or(&e.error),
             Error::Serde(ref e) => e.description(),
             Error::Http(ref e) => e.description(),
             Error::Io(ref e) => e.description(),
-            Error::Client(ref status) | Error::Server(ref status) => {
-                status.canonical_reason().unwrap_or("Unknown Status code")
-            },
+            Error::Client(ref status) |
+            Error::Server(ref status) => status.canonical_reason().unwrap_or("Unknown Status code"),
             Error::ClientIdRequired => "ClientIdRequired",
             Error::ClientSecretRequired => "ClientSecretRequired",
             Error::AccessTokenRequired => "AccessTokenRequired",
@@ -309,38 +314,43 @@ pub struct ApiError {
 }
 
 impl Mastodon {
-    fn from_registration<I>(base: I,
-                         client_id: I,
-                         client_secret: I,
-                         redirect: I,
-                         token: I,
-                         client: Client)
-        -> Self
-        where I: Into<Cow<'static, str>>
-        {
-            let data = Data {
-                base: base.into(),
-                client_id: client_id.into(),
-                client_secret: client_secret.into(),
-                redirect: redirect.into(),
-                token: token.into(),
+    fn from_registration<I>(
+        base: I,
+        client_id: I,
+        client_secret: I,
+        redirect: I,
+        access_token: I,
+        client: Client,
+    ) -> Self
+    where
+        I: Into<Cow<'static, str>>,
+    {
+        let data = Data {
+            base: base.into(),
+            client_id: client_id.into(),
+            client_secret: client_secret.into(),
+            redirect: redirect.into(),
+            access_token: access_token.into(),
+        };
 
-            };
+        let mut headers = Headers::new();
+        headers.set(Authorization(
+            Bearer { token: (*data.access_token).to_owned() },
+        ));
 
-            let mut headers = Headers::new();
-            headers.set(Authorization(Bearer { token: (*data.token).to_owned() }));
-
-            Mastodon {
-                client: client,
-                headers: headers,
-                data: data,
-            }
+        Mastodon {
+            client: client,
+            headers: headers,
+            data: data,
         }
+    }
 
     /// Creates a mastodon instance from the data struct.
     pub fn from_data(data: Data) -> Self {
         let mut headers = Headers::new();
-        headers.set(Authorization(Bearer { token: (*data.token).to_owned() }));
+        headers.set(Authorization(
+            Bearer { token: (*data.access_token).to_owned() },
+        ));
 
         Mastodon {
             client: Client::new(),
@@ -394,15 +404,20 @@ impl Mastodon {
     pub fn new_status(&self, status: StatusBuilder) -> Result<Status> {
         use std::io::Read;
 
-        let mut response = self.client.post(&self.route("/api/v1/statuses"))
+        let request = self.client
+            .post(&self.route("/api/v1/statuses"))
             .headers(self.headers.clone())
             .json(&status)
-            .send()?;
+            .build()?;
+
+        let mut response = self.client.execute(request)?;
 
         let mut vec = Vec::new();
         response.read_to_end(&mut vec)?;
 
-        if let Ok(t) = json::from_slice(&vec) {
+        let res = json::from_slice(&vec);
+
+        if let Ok(t) = res {
             Ok(t)
         } else {
             Err(Error::Api(json::from_slice(&vec)?))
@@ -435,27 +450,26 @@ impl Mastodon {
 
     /// Get statuses of a single account by id. Optionally only with pictures
     /// and or excluding replies.
-    pub fn statuses(&self, id: u64, only_media: bool, exclude_replies: bool)
-        -> Result<Vec<Status>>
-        {
-            let mut url = format!("{}/api/v1/accounts/{}/statuses", self.base, id);
+    pub fn statuses(
+        &self,
+        id: u64,
+        only_media: bool,
+        exclude_replies: bool,
+    ) -> Result<Vec<Status>> {
+        let mut url = format!("{}/api/v1/accounts/{}/statuses", self.base, id);
 
-            if only_media {
-                url += "?only_media=1";
-            }
-
-            if exclude_replies {
-                url += if only_media {
-                    "&"
-                } else {
-                    "?"
-                };
-
-                url += "exclude_replies=1";
-            }
-
-            self.get(url)
+        if only_media {
+            url += "?only_media=1";
         }
+
+        if exclude_replies {
+            url += if only_media { "&" } else { "?" };
+
+            url += "exclude_replies=1";
+        }
+
+        self.get(url)
+    }
 
 
     /// Returns the client account's relationship to a list of other accounts.

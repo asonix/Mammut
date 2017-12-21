@@ -8,7 +8,7 @@ use status_builder::Visibility;
 #[derive(Debug, Clone, Deserialize)]
 pub struct Status {
     /// The ID of the status.
-    pub id: i64,
+    pub id: String,
     /// A Fediverse-unique resource ID.
     pub uri: String,
     /// URL to the status page (can be remote)
@@ -36,11 +36,17 @@ pub struct Status {
     pub reblogged: Option<bool>,
     /// Whether the application client has favourited the status.
     pub favourited: Option<bool>,
+    /// Whether the status is muted
+    pub muted: bool,
+    /// Whether the status is pinned
+    pub pinned: bool,
     /// Whether media attachments should be hidden by default.
     pub sensitive: bool,
     /// If not empty, warning text that should be displayed before the actual
     /// content.
     pub spoiler_text: String,
+    /// The language of the post
+    pub language: Option<String>,
     /// The visibilty of the status.
     pub visibility: Visibility,
     /// An array of attachments.
@@ -51,6 +57,16 @@ pub struct Status {
     pub tags: Vec<Tag>,
     /// Name of application used to post status.
     pub application: Option<Application>,
+    /// A list of the emojis in the post
+    pub emojis: Vec<Emoji>,
+}
+
+/// An emoji included in a status
+#[derive(Debug, Clone, Deserialize)]
+pub struct Emoji {
+    shortcode: String,
+    static_url: String,
+    url: String,
 }
 
 /// A mention of another user.
